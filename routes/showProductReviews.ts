@@ -28,23 +28,27 @@ global.sleep = (time: number) => {
 export function showProductReviews () {
   return (req: Request, res: Response, next: NextFunction) => {
     // Truncate id to avoid unintentional RCE
-    const id = !utils.isChallengeEnabled(challenges.noSqlCommandChallenge) ? Number(req.params.id) : utils.trunc(req.params.id, 40)
-
-    // Measure how long the query takes, to check if there was a nosql dos attack
-    const t0 = new Date().getTime()
-
-    db.reviewsCollection.find({ $where: 'this.product == ' + id }).then((reviews: Review[]) => {
-      const t1 = new Date().getTime()
-      challengeUtils.solveIf(challenges.noSqlCommandChallenge, () => { return (t1 - t0) > 2000 })
-      const user = security.authenticatedUsers.from(req)
-      for (let i = 0; i < reviews.length; i++) {
-        if (user === undefined || reviews[i].likedBy.includes(user.data.email)) {
-          reviews[i].liked = true
-        }
-      }
-      res.json(utils.queryResultToJson(reviews))
-    }, () => {
-      res.status(400).json({ error: 'Wrong Params' })
-    })
-  }
+    // Parse and validate the product ID
+const productId = parseInt(req.params.id, 10)
+if (isNaN(productId)) {
+  return res.status(400).json({ error: 'Invalid product id' })
 }
+
+// Measure query time (optional, for challenge detection)
+const t0 = new Date().getTime()
+
+db.reviewsCollection.find({ product: productId }).then((reviews: Review[]) => {
+  const t1 = new Date().getTime()
+  challengeUtils.solveIf(challenges.noSqlCommandChallenge, () => { return (t1 - t0) > 1500 })
+  const user = security.authenticatedUsers.from(req)
+  for (let i = 0; i < reviews.length; i++) {
+    if (user === undefined || reviews[i].likedBy.includes(user.data.email)) {
+      reviews[i].liked = true
+    }
+  }
+  res.json(utils.queryResultToJson(reviews))
+}).catch(() => {
+  res.status(400).json({ error: 'Wrong Params' })
+})
+
+}} 
